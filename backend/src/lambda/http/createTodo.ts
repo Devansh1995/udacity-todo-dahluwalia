@@ -4,22 +4,17 @@ import { APIGatewayProxyEvent, APIGatewayProxyHandler, APIGatewayProxyResult } f
 import { createLogger } from '../../utils/logger'
 import { CreateTodoRequest } from '../../requests/CreateTodoRequest'
 
-import * as AWS  from 'aws-sdk'
-import * as uuid from 'uuid'
-
 import { getUserId } from '../utils'
+import { createToDo } from '../../businessLogic/ToDo'
 
 const logger = createLogger('createTodo')
 
-const docClient = new AWS.DynamoDB.DocumentClient()
-const todoTable = process.env.TODO_TABLE
-const bucketName = process.env.ATTACH_S3_BUCKET
 
 export const handler: APIGatewayProxyHandler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
   logger.info('Adding Todo: ', event)
   const newTodo: CreateTodoRequest = JSON.parse(event.body)
   const userId = getUserId(event)
-  const todoId = uuid.v4()
+  
   if(!userId) {
     return {
       statusCode: 400,
@@ -29,21 +24,18 @@ export const handler: APIGatewayProxyHandler = async (event: APIGatewayProxyEven
     }
   }
 
-  const newItem = {
-    userId, 
-    todoId,
-    createdAt: new Date().toISOString(),
-    done: false,
-    ...newTodo,
-    attachmentUrl: `https://${bucketName}.s3.amazonaws.com/${todoId}`
+  const name = newTodo.name
+
+  if(name == ''){
+    return {
+      statusCode: 400,
+      body: JSON.stringify({
+        error: 'Name invalid.'
+      })
+    }
   }
 
-  await docClient.put({
-    TableName: todoTable,
-    Item: newItem
-  })
-  .promise()
-
+  const result = await createToDo(newTodo, userId)
   // TODO: Implement creating a new TODO item
   return {
       statusCode: 201,
@@ -52,7 +44,7 @@ export const handler: APIGatewayProxyHandler = async (event: APIGatewayProxyEven
         'Access-Control-Allow-Credentials': true
       },
       body: JSON.stringify({
-        item: newItem
+        item: result
       })
     }
 }
